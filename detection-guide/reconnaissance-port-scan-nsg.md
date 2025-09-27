@@ -32,4 +32,6 @@ NTANetAnalytics
 
 ## 🔗 External Resources
 
-VirusTotal — https://www.virustotal.com
+IP Repuation Check — https://www.apivoid.com/tools/ip-reputation-check/
+
+Nslookup IP address 
