@@ -14,8 +14,8 @@
             "kind": "Scheduled",
             "apiVersion": "2023-12-01-preview",
             "properties": {
-                "displayName": "CUSTOM: Reconnaissance – Port Scan – NSG",
-                "description": "The detection rule identifies suspicious activity by monitoring for multiple connection attempts from a single source to numerous destination ports, indicating a potential scan. This helps in early detection and mitigation of reconnaissance activities.",
+                "displayName": "CUSTOM: Reconnaissance \u2013 Port Scan \u2013 NSG",
+                "description": "The detection rule identifies suspicious activity by monitoring for multiple connection attempts from a single source to numerous destination ports, indicating a potential scan. This helps in early detection and mitigation of reconnaissance activities.\n\nDetection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/reconnaissance-port-scan-nsg.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "NTANetAnalytics\n| where TimeGenerated > ago(30m) \n| extend SrcIp = tostring(split(SrcPublicIps, \"|\")[0])  \n| where isnotempty(SrcIp) \n| summarize UniquePorts = dcount(DestPort), Ports = make_set(DestPort) \n          by SrcIp, bin(TimeGenerated, 10m)\n| where UniquePorts > 15",
@@ -77,7 +77,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force ATTEMPT - Windows",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-attempt-windows.md",
                 "severity": "Low",
                 "enabled": true,
                 "query": "// Failed logon \nSecurityEvent\n| where EventID == 4625\n| where TimeGenerated > ago(60m)\n| summarize FailureCount = count() by AttackerIP = IpAddress, EventID, Activity, DestinationHostName = Computer\n| where FailureCount >= 20",
@@ -145,7 +145,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force SUCCESS - Windows",
-                "description": "If you see a SUCCESS but the Account is \"NT AUTHORITY\\ANONYMOUS LOGON\", check out this article: https://www.inversecos.com/2020/04/successful-4624-anonymous-logons-to.html",
+                "description": "If you see a SUCCESS but the Account is \"NT AUTHORITY\\ANONYMOUS LOGON\", check out this article: https://www.inversecos.com/2020/04/successful-4624-anonymous-logons-to.html\n\nDetection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-success-windows.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "// Brute Force Success Windows\nlet FailedLogons = SecurityEvent\n| where EventID == 4625 and LogonType == 3\n| where TimeGenerated > ago(1h)\n| summarize FailureCount = count() by AttackerIP = IpAddress, EventID, Activity, LogonType, DestinationHostName = Computer\n| where FailureCount >= 5;\nlet SuccessfulLogons = SecurityEvent\n| where EventID == 4624 and LogonType == 3\n| where TimeGenerated > ago(1h)\n| summarize SuccessfulCount = count() by AttackerIP = IpAddress, LogonType, DestinationHostName = Computer, AuthenticationSuccessTime = TimeGenerated;\nSuccessfulLogons\n| join kind = inner FailedLogons on DestinationHostName, AttackerIP, LogonType\n| project AuthenticationSuccessTime, AttackerIP, DestinationHostName, FailureCount, SuccessfulCount\n",
@@ -213,7 +213,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Windows Host Firewall Tampering",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/windows-host-firewall-tampering.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "Event\n| where EventLog == \"Microsoft-Windows-Windows Firewall With Advanced Security/Firewall\"\n| where EventID == 2003",
@@ -270,7 +270,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Possible Privilege Escallation (Global Administrator Role Assignment)",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/possible-privilege-escallation-global-administrator-role-assignment.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "AuditLogs\n| where OperationName == \"Add member to role\" and Result == \"success\"\n| where TargetResources[0].modifiedProperties[1].newValue == '\"Global Administrator\"' or TargetResources[0].modifiedProperties[1].newValue == '\"Company Administrator\"' and TargetResources[0].type == \"User\"\n| where TimeGenerated > ago(60m)\n| project\n    TimeGenerated,\n    OperationName,\n    AssignedRole = TargetResources[0].modifiedProperties[1].newValue,\n    Status = Result,\n    TargetResources,\n    InitiatorID = InitiatedBy[\"user\"][\"id\"],\n    TargetID = TargetResources[0][\"id\"]",
@@ -336,7 +336,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Suspicious Linux Command Execution",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/suspicious-linux-command-execution.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "Syslog\n| where Facility == \"authpriv\" or Facility == \"user\"\n| where ProcessName in (\"sudo\", \"bash\", \"sh\", \"zsh\")  // expand beyond just sudo\n| extend User = extract(@\"(\\w+)\", 1, SyslogMessage),\n         Command = extract(@\"COMMAND=(.*)\", 1, SyslogMessage),\n         SrcIp = extract(@\"from ([0-9\\\\.]+)\", 1, SyslogMessage)\n| where Command has_any (\n        \"nmap\",\n        \"netcat\", \"nc \",\n        \"wget\", \"curl\",\n        \"scp\", \"ssh\",\n        \"chmod 777\", \"chown root\",\n        \"passwd\",\n        \"base64\",\n        \"bash -i\",\n        \"eval\",\n        \"sudo -l\"\n)\n| summarize Attempts = count(),\n            SampleCommands = make_set(Command, 5),\n            SampleMessages = make_set(SyslogMessage, 3)\n          by User, Computer, SrcIp, bin(TimeGenerated, 10m)\n| where Attempts >= 1\n",
@@ -427,7 +427,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Malware Detected",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/malware-detected.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "Event\n| where EventLog == \"Microsoft-Windows-Windows Defender/Operational\"\n| where EventID == \"1116\" or EventID == \"1117\"",
@@ -481,8 +481,8 @@
             "kind": "Scheduled",
             "apiVersion": "2023-12-01-preview",
             "properties": {
-                "displayName": "CUSTOM: Command & Control – Outbound Network Connection – Windows",
-                "description": "",
+                "displayName": "CUSTOM: Command & Control \u2013 Outbound Network Connection \u2013 Windows",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/command-control-outbound-network-connection-windows.md",
                 "severity": "Low",
                 "enabled": true,
                 "query": "Event\n| where Source == \"Microsoft-Windows-Sysmon\" and EventID == 3\n| where tostring(EventData) !startswith \"10.\" and tostring(EventData) has \"443\"\n| project TimeGenerated, Computer, EventID, EventData\n",
@@ -529,7 +529,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force SUCCESS - Linux Syslog",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-success-linux-syslog.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "// Brute Force Success Linux\nlet FailedLogons = Syslog\n| where Facility == \"auth\" and SyslogMessage startswith \"Failed password for\"\n| where TimeGenerated > ago(1h)\n| project TimeGenerated, SourceIP = extract(@\"\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b\", 0, SyslogMessage), DestinationHostName = HostName, DestinationIP = HostIP, Facility, SyslogMessage, ProcessName, SeverityLevel, Type\n| summarize FailureCount = count() by AttackerIP = SourceIP, DestinationHostName\n| where FailureCount >= 5;\nlet SuccessfulLogons = Syslog\n| where Facility == \"auth\" and SyslogMessage startswith \"Accepted password for\"\n| where TimeGenerated > ago(1h)\n| project TimeGenerated, SourceIP = extract(@\"\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b\", 0, SyslogMessage), DestinationHostName = HostName, DestinationIP = HostIP, Facility, SyslogMessage, ProcessName, SeverityLevel, Type\n| summarize SuccessfulCount = count() by SuccessTime = TimeGenerated, AttackerIP = SourceIP, DestinationHostName\n| where SuccessfulCount >= 1\n| project DestinationHostName, SuccessfulCount, AttackerIP, SuccessTime;\nlet BruteForceSuccesses = SuccessfulLogons \n| join kind = inner FailedLogons on AttackerIP, DestinationHostName;\nBruteForceSuccesses",
@@ -597,7 +597,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force ATTEMPT - Azure Active Directory",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-attempt-azure-active-directory.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "SigninLogs\n| where ResultDescription == \"Invalid username or password or Invalid on-premise username or password.\"\n| project TimeGenerated, ResultDescription, UserPrincipalName, UserId, AppDisplayName, IPAddress, IPAddressFromResourceProvider, City = LocationDetails.city, State = LocationDetails.state, Country = LocationDetails.country, Latitude = LocationDetails.geoCoordinates.latitude, Longitude = LocationDetails.geoCoordinates.longitude",
@@ -665,7 +665,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force ATTEMPT - MS SQL Server",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-attempt-ms-sql-server.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "// Brute Force Attempt MS SQL Server\nlet IpAddress_REGEX_PATTERN = @\"\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b\";\nEvent\n| where EventLog == \"Application\"\n| where EventID == 18456\n| where TimeGenerated > ago(1hr)\n| project TimeGenerated, AttackerIP = extract(IpAddress_REGEX_PATTERN, 0, RenderedDescription), DestinationHostName = Computer, RenderedDescription\n| summarize FailureCount = count() by AttackerIP, DestinationHostName\n| where FailureCount >= 10",
@@ -733,7 +733,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Potential Malicious PowerShell ScriptBlock Execution",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/potential-malicious-powershell-scriptblock-execution.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "Event\n| where EventLog == \"Microsoft-Windows-PowerShell/Operational\"\n| where EventID == 4104\n| extend Script = RenderedDescription\n| where Script has_any (\n    \"Invoke-WebRequest\",\n    \"Invoke-Expression\",\n    \"IEX\",\n    \"DownloadString\",\n    \"FromBase64String\",\n    \"Net.WebClient\",\n    \"Start-BitsTransfer\",\n    \"-enc\",\n    \"rundll32\",\n    \"regsvr32\",\n    \"mshta\"\n)\n| project\n    TimeGenerated,\n    Computer,\n    UserPrincipalName = tostring(UserName),\n    Script",
@@ -812,7 +812,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force ATTEMPT - Linux Syslog",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-attempt-linux-syslog.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "// Brute Force Success Linux\nlet IpAddress_REGEX_PATTERN = @\"\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b\";\nSyslog\n| where Facility == \"auth\" and SyslogMessage startswith \"Failed password for\"\n| where TimeGenerated > ago(1h)\n| project TimeGenerated, AttackerIP = extract(IpAddress_REGEX_PATTERN, 0, SyslogMessage), DestinationHostName = HostName, DestinationIP = HostIP, Facility, SyslogMessage, ProcessName, SeverityLevel, Type\n| summarize FailureCount = count() by AttackerIP, DestinationHostName, DestinationIP\n| where FailureCount >= 10",
@@ -879,8 +879,8 @@
             "kind": "Scheduled",
             "apiVersion": "2023-12-01-preview",
             "properties": {
-                "displayName": "CUSTOM: Privilege Escalation – Unauthorized Sudo – Linux",
-                "description": "Detects unauthorized attempts to run commands with sudo by accounts not in the sudoers group.",
+                "displayName": "CUSTOM: Privilege Escalation \u2013 Unauthorized Sudo \u2013 Linux",
+                "description": "Detects unauthorized attempts to run commands with sudo by accounts not in the sudoers group.\n\nDetection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/privilege-escalation-unauthorized-sudo-linux.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "Syslog\n| where Facility == \"authpriv\" and ProcessName == \"sudo\"\n| where SyslogMessage contains \"NOT in sudoers\"\n| extend User = extract(@\"(\\w+)\", 1, SyslogMessage),\n         Command = extract(@\"COMMAND=(.*)\", 1, SyslogMessage),\n         SrcIp = extract(@\"from ([0-9\\\\.]+)\", 1, SyslogMessage)\n| summarize Attempts = count(),\n            SampleCommands = make_set(Command, 5),\n            SampleMessages = make_set(SyslogMessage, 3)\n          by User, Computer, SrcIp, bin(TimeGenerated, 10m)\n| where Attempts >= 1",
@@ -957,7 +957,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force ATTEMPT - Azure Key Vault",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-attempt-azure-key-vault.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "// Failed access attempts\nAzureDiagnostics\n| where ResourceProvider == \"MICROSOFT.KEYVAULT\" \n| where ResultSignature == \"Forbidden\"\n\n",
@@ -1016,7 +1016,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Possible Lateral Movement (Excessive Password Resets)",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/possible-lateral-movement-excessive-password-resets.md",
                 "severity": "Medium",
                 "enabled": true,
                 "query": "AuditLogs\n| where OperationName startswith \"Change\" or OperationName startswith \"Reset\"\n| order by TimeGenerated\n| summarize count() by tostring(InitiatedBy)\n| project Count = count_, InitiatorId = parse_json(InitiatedBy).user.id, InitiatorUpn = parse_json(InitiatedBy).user.userPrincipalName, InitiatorIpAddress = parse_json(InitiatedBy).user.ipAddress \n| where Count >= 10\n",
@@ -1086,7 +1086,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Possible Privilege Escalation (Azure Key Vault Critical Credential Retrieval or Update)",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/possible-privilege-escalation-azure-key-vault-critical-credential-retrieval-or-update.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "// Updating a specific existing password Success\nlet CRITICAL_PASSWORD_NAME = \"Tenant-Global-Admin-Password\";\nAzureDiagnostics\n| where ResourceProvider == \"MICROSOFT.KEYVAULT\" \n| where OperationName == \"SecretGet\" or OperationName == \"SecretSet\"\n| where id_s contains CRITICAL_PASSWORD_NAME",
@@ -1143,7 +1143,7 @@
             "apiVersion": "2023-12-01-preview",
             "properties": {
                 "displayName": "CUSTOM: Brute Force SUCCESS - Azure Active Directory",
-                "description": "",
+                "description": "Detection Guide: https://github.com/ryvora-io/CyberRange/blob/main/detection-guide/brute-force-success-azure-active-directory.md",
                 "severity": "High",
                 "enabled": true,
                 "query": "// Failed AAD logon\nlet FailedLogons = SigninLogs\n| where Status.failureReason == \"Invalid username or password or Invalid on-premise username or password.\"\n| where TimeGenerated > ago(1h)\n| project TimeGenerated, Status = Status.failureReason, UserPrincipalName, UserId, UserDisplayName, AppDisplayName, AttackerIP = IPAddress, IPAddressFromResourceProvider, City = LocationDetails.city, State = LocationDetails.state, Country = LocationDetails.country, Latitude = LocationDetails.geoCoordinates.latitude, Longitude = LocationDetails.geoCoordinates.longitude\n| summarize FailureCount = count() by AttackerIP, UserPrincipalName;\nlet SuccessfulLogons = SigninLogs\n| where Status.errorCode == 0 \n| where TimeGenerated > ago(1h)\n| project TimeGenerated, Status = Status.errorCode, UserPrincipalName, UserId, UserDisplayName, AppDisplayName, AttackerIP = IPAddress, IPAddressFromResourceProvider, City = LocationDetails.city, State = LocationDetails.state, Country = LocationDetails.country, Latitude = LocationDetails.geoCoordinates.latitude, Longitude = LocationDetails.geoCoordinates.longitude\n| summarize SuccessCount = count() by AuthenticationSuccessTime = TimeGenerated, AttackerIP, UserPrincipalName, UserId, UserDisplayName;\nlet BruteForceSuccesses = SuccessfulLogons\n| join kind = inner FailedLogons on AttackerIP, UserPrincipalName;\nBruteForceSuccesses\n| project AttackerIP, TargetAccount = UserPrincipalName, UserId, FailureCount, SuccessCount, AuthenticationSuccessTime",
