@@ -32,6 +32,8 @@ NTANetAnalytics
 
 ## 🔗 External Resources
 
-IP Repuation Check — https://www.apivoid.com/tools/ip-reputation-check/
+* **VirusTotal** – [https://www.virustotal.com](https://www.virustotal.com)
+  Check if the source IP, domain, or file hash is already known as malicious.
 
-Nslookup IP address 
+* **AbuseIPDB** – [https://www.abuseipdb.com](https://www.abuseipdb.com)
+  Look up the source IP address to see community reports of brute force, spam, or malicious activity.
